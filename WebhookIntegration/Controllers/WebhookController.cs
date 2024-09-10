@@ -62,7 +62,7 @@ namespace WebhookIntegration.Controllers
                     {
                         response.ChargeId = chargeData?.Id;
                         //response.ChargeId = "py_1Pt2yeHxOzOtBmAaVDjREuav";
-                        response.ChargeStatus = stripeEvent.Type;
+                        response.ChargeStatus = stripeEvent.Type[(stripeEvent.Type.IndexOf('.') + 1)..];
                     }
 
                     var knackResponse = await GetKnackRecordsAsync(response.ChargeId ?? "");
