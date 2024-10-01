@@ -4,7 +4,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddHttpClient();
-StripeConfiguration.SetApiKey("sk_test_ymXFPTjNpblIina9Ph9zSd98");
+StripeConfiguration.ApiKey= "sk_test_ymXFPTjNpblIina9Ph9zSd98";
 
 builder.Services.AddControllers();
 

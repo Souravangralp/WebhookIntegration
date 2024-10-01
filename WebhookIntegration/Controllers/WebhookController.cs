@@ -9,39 +9,28 @@ namespace WebhookIntegration.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    public class WebhookController : Controller
+    public class WebhookController(HttpClient httpClient) : Controller
     {
         // This is your Stripe CLI webhook secret for testing your endpoint locally.
-        //whsec_ab5571878fe57d0b4ce2a08c311fd12db77c26cc3f9ee1a9bdea1719f51ea5c4
+        //const string endpointSecret = "whsec_ab5571878fe57d0b4ce2a08c311fd12db77c26cc3f9ee1a9bdea1719f51ea5c4";
 
         //This one is for live
-        const string endpointSecret = "whsec_cOlQb0vwh869AMDmbJ8gBvD3i2I9eZAB";
-        
+        const string endpointSecret = "whsec_1WZ7fWNGxctuG6q6DHGBZBJ1aFK3pL4j";
+
 
         List<string> AcceptedEvents =
         [
-            StripeEvents.ChargeCaptured,
-            //StripeEvents.SourceChargeable,
-            StripeEvents.ChargeFailed,
-            StripeEvents.ChargePending,
-            StripeEvents.ChargeRefunded,
-            StripeEvents.ChargeSucceeded,
-            StripeEvents.ChargeUpdated,
-            StripeEvents.ChargeDisputeClosed,
-            StripeEvents.ChargeDisputeCreated,
-            StripeEvents.ChargeDisputeFundsReinstated,
-            StripeEvents.ChargeDisputeFundsWithdrawn,
-            StripeEvents.ChargeDisputeUpdated,
-            StripeEvents.ChargeRefundUpdated
+            Events.PaymentIntentCreated,
+            Events.PaymentIntentSucceeded,
+            Events.PaymentIntentPaymentFailed,
+            Events.PaymentIntentCanceled,
+            Events.PaymentIntentProcessing,
+            Events.PaymentIntentAmountCapturableUpdated,
+            Events.PaymentIntentPartiallyFunded,
+            Events.PaymentIntentRequiresAction
         ];
 
-        private readonly HttpClient _httpClient;
-
-        public WebhookController(HttpClient httpClient)
-        {
-            _httpClient = httpClient;
-        }
-
+        private readonly HttpClient _httpClient = httpClient;
 
         [HttpPost]
         public async Task<IActionResult> Index()
@@ -49,56 +38,72 @@ namespace WebhookIntegration.Controllers
             var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
             try
             {
-                ChargeResponse response = new();
+                PaymentIntentResponse response = new();
 
-                var stripeEvent = StripeEventUtility.ConstructEvent(json,
-                    Request.Headers["Stripe-Signature"], endpointSecret);
+                var stripeEvent = EventUtility.ConstructEvent(json,
+                     Request.Headers["Stripe-Signature"], endpointSecret);
 
                 if (!string.IsNullOrWhiteSpace(stripeEvent.Type) && AcceptedEvents.Contains(stripeEvent.Type))
-                {
-                    var chargeData = JsonConvert.DeserializeObject<StripeChargeCustom>(stripeEvent.Data.Object.ToString());
-
-                    if (chargeData != null)
+                {;
+                    var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
+                   
+                    if (paymentIntent != null)
                     {
-                        response.ChargeId = chargeData?.Id;
-                        //response.ChargeId = "py_1Pt2yeHxOzOtBmAaVDjREuav";
-                        response.ChargeStatus = stripeEvent.Type[(stripeEvent.Type.IndexOf('.') + 1)..];
+                        try
+                        {
+                            if (paymentIntent != null)
+                            {
+                                response.IntentId = paymentIntent.Id; 
+                                response.Status = paymentIntent.Status;
+
+                                var knackResponse = await GetKnackRecordsAsync(response.IntentId ?? "");
+
+                                if (knackResponse != null)
+                                {
+                                    await UpdateRecordAsync(knackResponse?.Records.FirstOrDefault()?.Id ?? "", new { field_875 = response.Status });
+                                }
+                            }
+                        }
+                        catch (JsonException ex)
+                        {
+                            Console.WriteLine("Error deserializing PaymentIntent: " + ex.Message);
+                        }
                     }
-
-                    var knackResponse = await GetKnackRecordsAsync(response.ChargeId ?? "");
-
-                    if (knackResponse != null)
+                    else
                     {
-                        await UpdateRecordAsync(knackResponse?.Records.FirstOrDefault()?.Id ?? "", new { field_875 = response.ChargeStatus });
+                        Console.WriteLine("The payment intent data is null or not a valid");
                     }
                 }
-                else
-                {
-                    Console.WriteLine("Unhandled event type: {0}", stripeEvent.Type);
-                }
 
-                return Ok();
+                return Ok("Event triggered successfully");
             }
             catch (StripeException e)
             {
-                return BadRequest();
+                return BadRequest(e.Message);
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.Message);
-                throw e;
+                return BadRequest(e.Message);
             }
         }
 
         [HttpGet("knack/records")]
         public async Task<IActionResult> GetRecords(string recordId)
         {
-            var records = await GetKnackRecordsAsync(recordId);
+            try
+            {
+                var records = await GetKnackRecordsAsync(recordId);
 
-            return Ok(records);
+                return Ok(records);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest("Something wring with knack");
+            }
+          
         }
 
-        private async Task<KnackModel> GetKnackRecordsAsync(string chargeId)
+        private async Task<KnackModel> GetKnackRecordsAsync(string paymentIntentId)
         {
             var apiUrl = "https://api.knack.com/v1/objects/object_39/records/";
             var filters = new
@@ -107,12 +112,12 @@ namespace WebhookIntegration.Controllers
                     new {
                         field = "field_876",
                         Operator = "is",
-                        value = chargeId
+                        value = paymentIntentId
                     }
                 }
             };
 
-            var urlWithFilters = $"{apiUrl}?filters={{\"match\":\"and\",\"rules\":[{{\"field\":\"field_876\",\"operator\":\"is\",\"value\":\"{chargeId}\"}}]}}";
+            var urlWithFilters = $"{apiUrl}?filters={{\"match\":\"and\",\"rules\":[{{\"field\":\"field_900\",\"operator\":\"is\",\"value\":\"{paymentIntentId}\"}}]}}";
 
             _httpClient.DefaultRequestHeaders.Clear();
             _httpClient.DefaultRequestHeaders.Add("x-knack-application-id", "5f96fae162159800189f7ed2");

@@ -7,8 +7,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Models\StripeChargeCustom.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Datadog.Trace" Version="3.2.0" />
+    <PackageReference Include="Datadog.Trace.Bundle" Version="3.2.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
-    <PackageReference Include="Stripe.net" Version="19.10.0" />
+    <PackageReference Include="Stripe.net" Version="45.14.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
   </ItemGroup>
 
