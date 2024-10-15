@@ -15,7 +15,10 @@ namespace WebhookIntegration.Controllers
         //const string endpointSecret = "whsec_ab5571878fe57d0b4ce2a08c311fd12db77c26cc3f9ee1a9bdea1719f51ea5c4";
 
         //This one is for live
-        const string endpointSecret = "whsec_1WZ7fWNGxctuG6q6DHGBZBJ1aFK3pL4j";
+        //const string endpointSecret = "whsec_1WZ7fWNGxctuG6q6DHGBZBJ1aFK3pL4j";
+
+        //For Non-testing env in Stipe
+        const string endpointSecret = "whsec_inTbD9kC4hOAysal95P8CH6iICuOQgd3";
 
 
         List<string> AcceptedEvents =
@@ -41,12 +44,12 @@ namespace WebhookIntegration.Controllers
                 PaymentIntentResponse response = new();
 
                 var stripeEvent = EventUtility.ConstructEvent(json,
-                     Request.Headers["Stripe-Signature"], endpointSecret);
+                     Request.Headers["Stripe-Signature"], endpointSecret, throwOnApiVersionMismatch: false);
 
                 if (!string.IsNullOrWhiteSpace(stripeEvent.Type) && AcceptedEvents.Contains(stripeEvent.Type))
-                {;
+                {
                     var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
-                   
+
                     if (paymentIntent != null)
                     {
                         try
@@ -54,36 +57,38 @@ namespace WebhookIntegration.Controllers
                             if (paymentIntent != null)
                             {
                                 response.IntentId = paymentIntent.Id; 
-                                response.Status = paymentIntent.Status;
+                                response.Status = paymentIntent.Status; 
 
                                 var knackResponse = await GetKnackRecordsAsync(response.IntentId ?? "");
 
                                 if (knackResponse != null)
                                 {
                                     await UpdateRecordAsync(knackResponse?.Records.FirstOrDefault()?.Id ?? "", new { field_875 = response.Status });
+
+                                    return Ok($"Event triggered successfully, status: {paymentIntent?.Status}");
                                 }
                             }
                         }
                         catch (JsonException ex)
                         {
-                            Console.WriteLine("Error deserializing PaymentIntent: " + ex.Message);
+                            return BadRequest("Error deserializing PaymentIntent: " + ex.Message);
                         }
                     }
                     else
                     {
-                        Console.WriteLine("The payment intent data is null or not a valid");
+                        return BadRequest("The payment intent data is null or not a valid");
                     }
                 }
 
-                return Ok("Event triggered successfully");
+                return BadRequest($"Event was not matched");
             }
             catch (StripeException e)
             {
-                return BadRequest(e.Message);
+                return BadRequest("Stripe exception: " + e.Message);
             }
             catch (Exception e)
             {
-                return BadRequest(e.Message);
+                return BadRequest("Exception: " + e.Message);
             }
         }
 
